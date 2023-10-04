@@ -1,21 +1,20 @@
-import dgl
 import torch
 import torch.nn.functional as F
 import numpy
 import argparse
 import time
-from dataset import Dataset
 from sklearn.metrics import f1_score, accuracy_score, recall_score, roc_auc_score, precision_score, confusion_matrix
 from BWGNN import *
 from sklearn.model_selection import train_test_split
 
-
 def train(model, g, args):
-    features = g.ndata['feature']
-    labels = g.ndata['label']
+    # g = g.to(device)
+    features = g.x
+    labels = g.y
+    edge_index = g.edge_index
     index = list(range(len(labels)))
-    if dataset_name == 'amazon':
-        index = list(range(3305, len(labels)))
+    # if dataset_name == 'amazon':
+    #     index = list(range(3305, len(labels)))
 
     idx_train, idx_rest, y_train, y_rest = train_test_split(index, labels[index], stratify=labels[index],
                                                             train_size=args.train_ratio,
@@ -39,7 +38,7 @@ def train(model, g, args):
     time_start = time.time()
     for e in range(args.epoch):
         model.train()
-        logits = model(features)
+        logits = model(features, edge_index)
         loss = F.cross_entropy(logits[train_mask], labels[train_mask], weight=torch.tensor([1., weight]))
         optimizer.zero_grad()
         loss.backward()
@@ -87,7 +86,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='BWGNN')
     parser.add_argument("--dataset", type=str, default="amazon",
                         help="Dataset for this model (yelp/amazon/tfinance/tsocial)")
-    parser.add_argument("--train_ratio", type=float, default=0.4, help="Training ratio")
+    parser.add_argument("--train_ratio", type=float, default=0.2, help="Training ratio")
     parser.add_argument("--hid_dim", type=int, default=64, help="Hidden layer dimension")
     parser.add_argument("--order", type=int, default=2, help="Order C in Beta Wavelet")
     parser.add_argument("--homo", type=int, default=1, help="1 for BWGNN(Homo) and 0 for BWGNN(Hetero)")
@@ -96,19 +95,21 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     print(args)
-    dataset_name = args.dataset
+    # dataset_name = args.dataset
     homo = args.homo
     order = args.order
     h_feats = args.hid_dim
-    graph = Dataset(dataset_name, homo).graph
-    in_feats = graph.ndata['feature'].shape[1]
+    graph = torch.load(r'./dataset/weibo.pt')
+    graph.y = graph.y.bool().long()
+    in_feats = graph.x.size()[1]
     num_classes = 2
 
     if args.run == 1:
         if homo:
             model = BWGNN(in_feats, h_feats, num_classes, graph, d=order)
         else:
-            model = BWGNN_Hetero(in_feats, h_feats, num_classes, graph, d=order)
+            pass
+            # model = BWGNN_Hetero(in_feats, h_feats, num_classes, graph, d=order)
         train(model, graph, args)
 
     else:
@@ -117,7 +118,8 @@ if __name__ == '__main__':
             if homo:
                 model = BWGNN(in_feats, h_feats, num_classes, graph, d=order)
             else:
-                model = BWGNN_Hetero(in_feats, h_feats, num_classes, graph, d=order)
+                pass
+                # model = BWGNN_Hetero(in_feats, h_feats, num_classes, graph, d=order)
             mf1, auc = train(model, graph, args)
             final_mf1s.append(mf1)
             final_aucs.append(auc)
